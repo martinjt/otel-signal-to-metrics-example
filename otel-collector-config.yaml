@@ -1,0 +1,37 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch/metrics:
+    timeout: 1m
+    send_batch_size: 1024
+
+exporters:
+  otlp:
+    endpoint: api.honeycomb.io:443
+    headers:
+      x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
+
+connectors:
+  signaltometrics:
+    spans:
+      - name: stm.basket.value
+        description: The value of the basket from SignalToMetrics
+        unit: amount
+        exponential_histogram:
+          value: attributes["basket.value"]
+          max_size: 50
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [signaltometrics]
+    metrics/stm:
+      receivers: [signaltometrics]
+      processors: [batch/metrics]
+      exporters: [otlp]
+
