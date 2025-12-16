@@ -8,30 +8,222 @@ processors:
   batch/metrics:
     timeout: 1m
     send_batch_size: 1024
+  probabilistic_sampler:
+    sampling_percentage: 10
+  ## add sample rate to tracestate
+  transform/sample_rate:
+    trace_statements:
+      - set(span.trace_state["ot"], "sr=10")
 
 exporters:
   otlp:
     endpoint: api.honeycomb.io:443
     headers:
       x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
+  debug:
+    verbosity: detailed
 
 connectors:
-  signaltometrics:
+  signaltometrics/custom:
     spans:
+      # Custom basket metric
       - name: stm.basket.value
         description: The value of the basket from SignalToMetrics
         unit: amount
         exponential_histogram:
+          count: Int(AdjustedCount())
           value: attributes["basket.value"]
           max_size: 50
+  signaltometrics/duration:
+    spans:
+      # HTTP Server Request Duration (required metric per semconv)
+      - name: stm.http.server.request.duration
+        description: Duration of HTTP server requests
+        unit: s
+        histogram:
+          buckets: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
+          count: Int(AdjustedCount())
+          value: Seconds(end_time - start_time)
+        attributes:
+          - key: http.request.method
+          - key: http.route
+            optional: true
+          - key: http.response.status_code
+            optional: true
+          - key: url.scheme
+            optional: true
+          - key: error.type
+            optional: true
+          - key: network.protocol.version
+            optional: true
+          - key: server.address
+            optional: true
+          - key: server.port
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+        conditions:
+          - span.kind == SPAN_KIND_SERVER
+
+  signaltometrics/exponential_histogram:
+    spans:
+      # HTTP Server Request Duration (required metric per semconv)
+      - name: stm.expo.http.server.request.duration
+        description: Duration of HTTP server requests
+        unit: s
+        exponential_histogram:
+          count: Int(AdjustedCount())
+          value: Seconds(end_time - start_time)
+          max_size: 50
+        attributes:
+          - key: http.request.method
+          - key: http.route
+            optional: true
+          - key: http.response.status_code
+            optional: true
+          - key: url.scheme
+            optional: true
+          - key: error.type
+            optional: true
+          - key: network.protocol.version
+            optional: true
+          - key: server.address
+            optional: true
+          - key: server.port
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+        conditions:
+          - span.kind == SPAN_KIND_SERVER
+
+
+  signaltometrics/red:
+    spans:
+      # HTTP Client Request Duration (required metric per semconv)
+      - name: stm.http.client.request.duration
+        description: Duration of HTTP client requests
+        unit: s
+        histogram:
+          buckets: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
+          count: Int(AdjustedCount())
+          value: Seconds(end_time - start_time)
+        attributes:
+          - key: http.request.method
+          - key: server.address
+          - key: server.port
+          - key: http.route
+            optional: true
+          - key: http.response.status_code
+            optional: true
+          - key: error.type
+            optional: true
+          - key: network.protocol.version
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+        conditions:
+          - span.kind == SPAN_KIND_CLIENT
+
+      # HTTP Server Request Body Size (optional metric per semconv)
+      - name: stm.http.server.request.body.size
+        description: Size of HTTP server request bodies
+        unit: By
+        histogram:
+          buckets: [0, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]
+          count: Int(AdjustedCount())
+          value: attributes["http.request.body.size"]
+        attributes:
+          - key: http.request.method
+          - key: http.route
+            optional: true
+          - key: http.response.status_code
+            optional: true
+          - key: url.scheme
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+        conditions:
+          - span.kind == SPAN_KIND_SERVER and attributes["http.request.body.size"] != nil
+
+      # HTTP Server Response Body Size (optional metric per semconv)
+      - name: stm.http.server.response.body.size
+        description: Size of HTTP server response bodies
+        unit: By
+        histogram:
+          buckets: [0, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]
+          count: Int(AdjustedCount())
+          value: attributes["http.response.body.size"]
+        attributes:
+          - key: http.request.method
+          - key: http.route
+            optional: true
+          - key: http.response.status_code
+            optional: true
+          - key: url.scheme
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+        conditions:
+          - span.kind == SPAN_KIND_SERVER and attributes["http.response.body.size"] != nil
+
+      # HTTP Client Request Body Size (optional metric per semconv)
+      - name: stm.http.client.request.body.size
+        description: Size of HTTP client request bodies
+        unit: By
+        histogram:
+          buckets: [0, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]
+          count: Int(AdjustedCount())
+          value: attributes["http.request.body.size"]
+        attributes:
+          - key: http.request.method
+          - key: server.address
+          - key: server.port
+          - key: http.route
+            optional: true
+          - key: http.response.status_code
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+        conditions:
+          - span.kind == SPAN_KIND_CLIENT and attributes["http.request.body.size"] != nil
+
+      # HTTP Client Response Body Size (optional metric per semconv)
+      - name: stm.http.client.response.body.size
+        description: Size of HTTP client response bodies
+        unit: By
+        histogram:
+          buckets: [0, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]
+          count: Int(AdjustedCount())
+          value: attributes["http.response.body.size"]
+        attributes:
+          - key: service.name
+          - key: http.request.method
+          - key: server.address
+          - key: server.port
+          - key: http.response.status_code
+            optional: true
+        include_resource_attributes:
+          - key: service.name
+        conditions:
+          - span.kind == SPAN_KIND_CLIENT and attributes["http.response.body.size"] != nil
 
 service:
   pipelines:
+    # 1% Sampled Traces go to the backend
     traces:
       receivers: [otlp]
-      exporters: [signaltometrics]
+      processors: [probabilistic_sampler]
+      exporters: [otlp]
+    # 100% traces go to the connector
+    traces/red:
+      receivers: [otlp]
+      exporters: [signaltometrics/red, signaltometrics/custom, signaltometrics/duration, signaltometrics/exponential_histogram]
+    # All metrics are batched before they're exported
     metrics/stm:
-      receivers: [signaltometrics]
+      receivers: [signaltometrics/custom, signaltometrics/red, signaltometrics/duration, signaltometrics/exponential_histogram]
       processors: [batch/metrics]
       exporters: [otlp]
 
+    metrics/app:
+      receivers: [otlp]
+      exporters: [otlp, debug]

@@ -13,3 +13,26 @@ services:
     environment:
       - HONEYCOMB_API_KEY=${HONEYCOMB_API_KEY}
     restart: unless-stopped
+    networks:
+      - stm-network
+
+  basket-api:
+    build:
+      context: ./src/BasketApi
+      dockerfile: Dockerfile
+    container_name: basket-api
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+    depends_on:
+      - otel-collector
+    restart: unless-stopped
+    networks:
+      - stm-network
+
+networks:
+  stm-network:
+    driver: bridge
